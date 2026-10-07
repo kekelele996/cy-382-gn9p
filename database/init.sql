@@ -45,3 +45,92 @@ CREATE TABLE IF NOT EXISTS diary_entries (
   content TEXT NOT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- ============ 行程分账 ============
+
+-- 行程账：发起人定的总预算
+CREATE TABLE IF NOT EXISTS trip_accounts (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  trip_id BIGINT NOT NULL UNIQUE,
+  owner_id BIGINT NOT NULL,
+  total_budget DECIMAL(12,2) NOT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+-- 行程账分项：四项计划数、实际花费、对账状态
+CREATE TABLE IF NOT EXISTS account_categories (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  trip_id BIGINT NOT NULL,
+  category VARCHAR(20) NOT NULL COMMENT 'TRANSPORT/LODGING/FOOD/TICKET',
+  planned DECIMAL(12,2) NOT NULL,
+  actual_amount DECIMAL(12,2) NOT NULL DEFAULT 0,
+  status VARCHAR(20) NOT NULL DEFAULT 'PENDING' COMMENT 'PENDING/MATCHED/SUSPENDED/SETTLED',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_trip_category (trip_id, category)
+);
+
+-- 同行成员（垫付人/分摊人）
+CREATE TABLE IF NOT EXISTS trip_members (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  trip_id BIGINT NOT NULL,
+  user_id BIGINT NULL,
+  name VARCHAR(80) NOT NULL,
+  role VARCHAR(20) NOT NULL DEFAULT 'MEMBER' COMMENT 'OWNER/MEMBER',
+  joined_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_trip_user (trip_id, user_id)
+);
+
+-- 垫付单
+CREATE TABLE IF NOT EXISTS expense_slips (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  trip_id BIGINT NOT NULL,
+  payer_member_id BIGINT NOT NULL,
+  category VARCHAR(20) NOT NULL,
+  amount DECIMAL(12,2) NOT NULL COMMENT '允许负数：ADJUST 差额调整单',
+  sharer_member_ids JSON NOT NULL,
+  status VARCHAR(20) NOT NULL DEFAULT 'REPORTED' COMMENT 'REPORTED/WITHDRAWN/SUSPENDED/SETTLED/SUPERSEDED',
+  source VARCHAR(20) NOT NULL DEFAULT 'MEMBER' COMMENT 'MEMBER/ADJUST/OVERWRITE',
+  settlement_id BIGINT NULL,
+  superseded_slip_ids JSON NULL,
+  note VARCHAR(200) NULL,
+  client_key VARCHAR(80) NOT NULL UNIQUE COMMENT '上报幂等键，失败重跑不重复',
+  retry_of BIGINT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  KEY idx_slip_trip_category (trip_id, category)
+);
+
+-- 结算记录（保留凭证开调整单 / 覆盖旧单）
+CREATE TABLE IF NOT EXISTS expense_settlements (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  trip_id BIGINT NOT NULL,
+  category VARCHAR(20) NOT NULL,
+  account_category_id BIGINT NOT NULL,
+  mode VARCHAR(20) NOT NULL COMMENT 'ADJUST/OVERWRITE',
+  final_amount DECIMAL(12,2) NOT NULL,
+  before_amount DECIMAL(12,2) NOT NULL,
+  difference DECIMAL(12,2) NOT NULL,
+  new_slip_id BIGINT NOT NULL,
+  covered_slip_ids JSON NULL,
+  note VARCHAR(200) NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_settlement_trip (trip_id)
+);
+
+-- 旧数据：没记分摊人和分项，升级补齐，补不出的单列
+CREATE TABLE IF NOT EXISTS legacy_expenses (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  trip_id BIGINT NOT NULL,
+  amount DECIMAL(12,2) NOT NULL,
+  payer_name VARCHAR(80) NULL,
+  category VARCHAR(20) NULL,
+  filled_sharer_member_ids JSON NULL,
+  filled_slip_id BIGINT NULL,
+  status VARCHAR(20) NOT NULL DEFAULT 'PENDING' COMMENT 'PENDING/FILLED/UNRESOLVED',
+  reason VARCHAR(200) NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  filled_at DATETIME NULL,
+  KEY idx_legacy_trip (trip_id)
+);
