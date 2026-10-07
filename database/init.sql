@@ -45,3 +45,66 @@ CREATE TABLE IF NOT EXISTS diary_entries (
   content TEXT NOT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS trip_ledgers (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  trip_id BIGINT NOT NULL UNIQUE,
+  total_budget DECIMAL(12,2) NOT NULL,
+  member_count INT NOT NULL,
+  settlement_mode VARCHAR(20) DEFAULT 'ADJUSTMENT',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS ledger_items (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  ledger_id BIGINT NOT NULL,
+  category VARCHAR(20) NOT NULL,
+  planned DECIMAL(12,2) NOT NULL DEFAULT 0,
+  actual DECIMAL(12,2) NOT NULL DEFAULT 0,
+  matched DECIMAL(12,2) NOT NULL DEFAULT 0,
+  status VARCHAR(20) DEFAULT 'OPEN',
+  settled_at TIMESTAMP NULL
+);
+
+CREATE TABLE IF NOT EXISTS advance_orders (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  ledger_id BIGINT NOT NULL,
+  member_id BIGINT NOT NULL,
+  member_name VARCHAR(80) NOT NULL,
+  category VARCHAR(20) NOT NULL,
+  amount DECIMAL(12,2) NOT NULL,
+  split_members TEXT,
+  status VARCHAR(20) DEFAULT 'REPORTED',
+  report_status VARCHAR(20) DEFAULT 'SUCCESS',
+  version INT DEFAULT 1,
+  overwritten TINYINT(1) DEFAULT 0,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS adjustment_orders (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  ledger_id BIGINT NOT NULL,
+  advance_order_id BIGINT NOT NULL,
+  category VARCHAR(20) NOT NULL,
+  delta_amount DECIMAL(12,2) NOT NULL,
+  reason VARCHAR(200),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS legacy_expenses (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  trip_id BIGINT NOT NULL,
+  amount DECIMAL(12,2) NOT NULL,
+  note VARCHAR(200),
+  migration_status VARCHAR(20) DEFAULT 'PENDING',
+  migrated_category VARCHAR(20),
+  fail_reason VARCHAR(200)
+);
+
+-- 演示用旧数据：没有分摊人和分项，等待升级补齐
+INSERT INTO legacy_expenses (trip_id, amount, note) VALUES
+  (1, 860.00, '旧版记录：机场包车'),
+  (1, 1200.00, '旧版记录：民宿两晚'),
+  (1, 450.00, '旧版记录：全员聚餐'),
+  (1, 99999.00, '旧版记录：异常大额');
